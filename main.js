@@ -7,6 +7,7 @@ require('prototype.RoomPosition');
 
 module.exports.loop = function () {
   // Stats object for Grafana
+  let initialCpu = 0;
   if (!Memory.stats) {
     Memory.stats = {
       cpu: {},
@@ -34,21 +35,26 @@ module.exports.loop = function () {
   }
 
   // Village System: keep info about a room in the object
+  initialCpu = Game.cpu.getUsed();
   for (const rn in Game.rooms) {
     villages[rn] = new VillageCentre(rn)
   }
+  Memory.stats.cpu.villageTotal = Game.cpu.getUsed() - initialCpu;
 
   // Flags System
+  initialCpu = Game.cpu.getUsed();
   for (const name in Game.flags) {
     let flag = Game.flags[name]
     flag.processFlag()
   }
+  Memory.stats.cpu.flagTotal = Game.cpu.getUsed() - initialCpu;
 
   // Main Loop
   for (const rn in Game.rooms) {
     let village = villages[rn]
 
     // Check sources
+    initialCpu = Game.cpu.getUsed();
     for (const source of village.sources) {
       let enemiesInRange = source.pos.findInRange(FIND_HOSTILE_CREEPS, 5)
       let hostileStructures = source.pos.findInRange(FIND_HOSTILE_STRUCTURES, 5)
@@ -68,15 +74,19 @@ module.exports.loop = function () {
         }
       }
     }
+    Memory.stats.cpu.sourceCheckTotal = Game.cpu.getUsed() - initialCpu;
 
     // Assign work to free creeps
+    initialCpu = Game.cpu.getUsed();
     village.assignments = _.sortBy(village.assignments, (a) => a.priority)
     let freeCreeps = _.filter(village.creeps, (c) => !c.memory.assignment)
     for (let creep of freeCreeps) {
       creep.getAssignment()
     }
+    Memory.stats.cpu.creepAssignmentTotal = Game.cpu.getUsed() - initialCpu;
 
     // Assign order to free spawns
+    initialCpu = Game.cpu.getUsed();
     let spawnOrders = _.sortBy(village.spawnOrders, (s) => s.priority)
     let freeSpawns = _.filter(village.spawns, (s) => !s.spawning)
     for (let spawn of freeSpawns) {
@@ -103,27 +113,28 @@ module.exports.loop = function () {
         }
       }
     }
+    Memory.stats.cpu.spawnAssignmentTotal = Game.cpu.getUsed() - initialCpu;
+
   }
   // Activate towers
+  initialCpu = Game.cpu.getUsed();
   let towers = _.filter(Game.structures, {structureType: STRUCTURE_TOWER})
   for (const tower of towers) {
     tower.guardRoom()
   }
+  Memory.stats.cpu.towerCheckTotal = Game.cpu.getUsed() - initialCpu;
+
   // Activate creeps
+  initialCpu = Game.cpu.getUsed();
   for (let name in Game.creeps){
     let creep = Game.creeps[name];
     if (!creep.spawning && creep.memory.assignment) creep.wakeUp();
   }
-  let creep = Game.getObjectById('5cfecf1efcfc4d09d8f49eb0')
-  if (creep) {
-    // sign(creep)
-  }
+  Memory.stats.cpu.creepActionTotal = Game.cpu.getUsed() - initialCpu;
 
   // Log CPU to Grafana
-  Memory.stats.cpu = {
-    used: Game.cpu.getUsed(),
-    bucket: Game.cpu.bucket
-  };
+  Memory.stats.cpu.used = Game.cpu.getUsed();
+  Memory.stats.cpu.bucket = Game.cpu.bucket;
   // GCL Stats
   Memory.stats.gcl.level = Game.gcl.level;
   Memory.stats.gcl.progress = Game.gcl.progress;
