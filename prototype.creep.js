@@ -53,8 +53,7 @@ Creep.prototype.eatBreakfast = function () {
     let energyLists = []
     for (const drop of village.droppedEnergies) {
       let amountWeight = drop.amount < 100 ? 40 : 0
-      // let distanceWeight = this.pos.getRangeTo(drop) * 2
-      let distanceWeight = this.pos.findPathTo(drop).length
+      let distanceWeight = this.pos.getRangeTo(drop)
       let priority = amountWeight + distanceWeight - 20 // -bias for energy on ground
       energyLists.push({id: drop.id, type: 'dropped_energy', priority: priority})
     }
@@ -63,26 +62,24 @@ Creep.prototype.eatBreakfast = function () {
     let harvestTime = (this.carryCapacity - this.carry.energy) / (this.getActiveBodyparts(WORK) * 2)
     for (const source of sources) {
       let freeTiles = source.room.lookForAtArea(LOOK_TERRAIN, source.pos.y-1, source.pos.x-1, source.pos.y+1, source.pos.x+1, true)
-      // freeTiles = _.sum(freeTiles, (t) => t.terrain !== 'wall') - _.sum(village.creeps, (c) => c.memory.energy && c.memory.energy.id == source.id)
       freeTiles = _.sum(freeTiles, (t) => t.terrain !== 'wall')
       freeTiles -= _.sum(village.creeps, (c) => c.memory.energy && c.memory.energy.id == source.id)
       if (freeTiles > 0 && this.getActiveBodyparts(WORK)) {
-        // let priority = (this.pos.getRangeTo(source) * 2) + harvestTime
-        let priority = (this.pos.findPathTo(source).length * 2) + harvestTime
+        let priority = (this.pos.getRangeTo(source) * 2) + harvestTime
         energyLists.push({id: source.id, type: 'source', priority: priority})
       }
     }
 
     if (village.storage && this.memory.assignment.type !== JOB.STORAGE) {
       let amountWeight = (village.storage.store.energy / this.carryCapacity) < 1 ? 99 : 0 //low priority if it cannot fill the creep carry capacity
-      let distanceWeight = this.pos.findPathTo(village.storage).length * 3
+      let distanceWeight = this.pos.getRangeTo(village.storage) * 3
       let priority = amountWeight + distanceWeight
       energyLists.push({id: village.storage.id, type: 'structure', priority: priority})
     }
 
     for (const container of village.sourceContainers) {
       let amountWeight = (container.store.energy / this.carryCapacity) < 1 ? 99 : 0 //low priority if it cannot fill the creep carry capacity
-      let distanceWeight = this.pos.findPathTo(container).length * 2
+      let distanceWeight = this.pos.getRangeTo(container) * 2
       let priority = amountWeight + distanceWeight
       energyLists.push({id: container.id, type: 'structure', priority: priority})
     }
@@ -90,7 +87,7 @@ Creep.prototype.eatBreakfast = function () {
     if ([JOB.UPGRADE, JOB.WORSHIP].includes(this.memory.assignment.type)) {
       for (const s of village.controllerContainers) {
         let amountWeight = (s.store.energy / this.carryCapacity) < 1 ? 99 : 0 //low priority if it cannot fill the creep carry capacity
-        let distanceWeight = this.pos.findPathTo(s).length * 1
+        let distanceWeight = this.pos.getRangeTo(s)
         let priority = amountWeight + distanceWeight
         energyLists.push({id: s.id, type: 'structure', priority: priority})
       }
@@ -98,7 +95,7 @@ Creep.prototype.eatBreakfast = function () {
 
     for (const tomb of _.filter(village.tombstones, (t) => t.store.energy)) {
       let amountWeight = (tomb.store.energy / this.carryCapacity) < 1 ? 5 : 0 //low priority if it cannot fill the creep carry capacity
-      let distanceWeight = this.pos.findPathTo(tomb).length * 2
+      let distanceWeight = this.pos.getRangeTo(tomb) * 2
       let priority = amountWeight + distanceWeight
       energyLists.push({id: tomb.id, type: 'structure', priority: priority})
     }

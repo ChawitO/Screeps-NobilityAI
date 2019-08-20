@@ -16,7 +16,7 @@ class VillageCentre {
     if (this.room && this.room.controller) {
       this.rcl = this.room.controller.level
     }
-    this.creeps = this.room.find(FIND_MY_CREEPS);
+    this.creeps = _.filter(Game.creeps, (c) => c.room.name === this.name);
     this.hostileCreeps = this.room.find(FIND_HOSTILE_CREEPS);
     this.hostileCombatants = _.filter(this.hostileCreeps, (e) => e.getActiveBodyparts(ATTACK) || e.getActiveBodyparts(RANGED_ATTACK))
     this.spawns = this.retrieve('spawns', (room) => room.find(FIND_MY_SPAWNS));
@@ -114,7 +114,7 @@ VillageCentre.prototype.maintenance = function () {
     peasantLimits += freeTiles
 
     // Check if source has Farmer
-    let hasFarmer = _.sum(this.creeps, (c) => c.memory.role == FARMER && c.memory.assignment.id == source.id)
+    let hasFarmer = _.sum(Game.creeps, (c) => c.memory.role == FARMER && c.memory.assignment.id == source.id)
     if (!hasFarmer && this.room.controller.level >= 2) {
       let order = {
         body: [WORK, WORK, WORK, WORK, WORK, MOVE],
@@ -139,7 +139,7 @@ VillageCentre.prototype.maintenance = function () {
     this.peasantSpawnOrder()
   }
   let caravanCounts = _.sum(this.creeps, (c) => c.memory.role == CARAVAN)
-  if (caravanCounts < 1 && this.rcl >= 3) {
+  if (caravanCounts < 1 && this.storage) {
     this.caravanSpawnOrder()
   }
 
