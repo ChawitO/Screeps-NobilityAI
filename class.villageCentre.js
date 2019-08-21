@@ -11,11 +11,8 @@ class VillageCentre {
       Memory.rooms[this.name].buildingCount = this.structures.length
     }
 
+    this.rcl = (this.room.controller) ? this.room.controller.level : undefined;
 
-    this.rcl = undefined
-    if (this.room && this.room.controller) {
-      this.rcl = this.room.controller.level
-    }
     this.creeps = _.filter(Game.creeps, (c) => c.room.name === this.name);
     this.hostileCreeps = this.room.find(FIND_HOSTILE_CREEPS);
     this.hostileCombatants = _.filter(this.hostileCreeps, (e) => e.getActiveBodyparts(ATTACK) || e.getActiveBodyparts(RANGED_ATTACK))
@@ -37,7 +34,8 @@ class VillageCentre {
     this.controllerContainers = _.filter(this.containers, (s) => !s.pos.findInRange(FIND_SOURCES, 1).length &&
                                                                   s.pos.findInRange(FIND_STRUCTURES, 5, {filter: {structureType: STRUCTURE_CONTROLLER}}).length)
 
-    this.maintenance()
+    this.createAssignments();
+    this.createSpawnOrder();
     Memory.rooms[this.name].newBuilding = false
     Memory.rooms[this.name].newCreep = false
   }
@@ -45,76 +43,74 @@ class VillageCentre {
 
 module.exports = VillageCentre
 
-VillageCentre.prototype.maintenance = function () {
-  /** Assignment Priority System
-  000 energy supply / minimum upgrading creeps
-  100 repair
-  200 build
-  900 lowest priority assignment
-  **/
+VillageCentre.prototype.createAssignments = function() {
+  const ASSIGNMENT_PRIORITY = {
+    high: 000,
+    repair: 100,
+    build: {
+      spawn: 210,
+      tower: 220,
+      container: 230,
+      road: 240,
+      extension: 250,
+      storage: 260
+    },
+    low: 900
+  };
+
   // Keep at least 1 creep upgrading the controller
   let upgradingCreep = _.sum(this.creeps, (c) => c.memory.assignment && c.memory.assignment.type == JOB.UPGRADE)
   if (!upgradingCreep && this.creeps.length > 5 && this.room.controller.my) {
-    this.assignments.push(new Assignment(JOB.UPGRADE, this.room.controller.id, this.name, 002))
+    this.assignments.push(new Assignment(JOB.UPGRADE, this.room.controller.id, this.name, ASSIGNMENT_PRIORITY.high + 10))
   }
 
   // Add repair job
   let repairingCreeps = _.sum(this.creeps, (c) => c.memory.assignment && c.memory.assignment.type == JOB.REPAIR)
   for (const s of this.damagedStructures) {
     if (repairingCreeps < 1 && (s.hits / s.hitsMax) < 0.75 && ![STRUCTURE_RAMPART, STRUCTURE_WALL].includes(s.structureType)) {
-      let weight = s.hits / s.hitsMax * 10
-      this.assignments.push(new Assignment(JOB.REPAIR, s.id, s.room.name, 110 + weight))
+      let weight = Math.floor(s.hits / s.hitsMax * 10)
+      this.assignments.push(new Assignment(JOB.REPAIR, s.id, s.room.name, ASSIGNMENT_PRIORITY.repair + weight))
     }
     else if (this.room.controller.reservation && this.room.controller.reservation.username == 'Euruzilys') {
-      this.assignments.push(new Assignment(JOB.REPAIR, s.id, s.room.name, 910))
-    }
-  }
-  for (const s of this.energyConsumers) {
-    // Add energy supply job
-    if (s.energyCapacity && s.energy < s.energyCapacity) {
-      this.assignments.push(new Assignment(JOB.SUPPLY, s.id, s.room.name, 010))
+      this.assignments.push(new Assignment(JOB.REPAIR, s.id, s.room.name, ASSIGNMENT_PRIORITY.low))
     }
   }
 
+  // Add energy supply job
+  for (const s of this.energyConsumers) {
+    if (s.energyCapacity && s.energy < s.energyCapacity) {
+      this.assignments.push(new Assignment(JOB.SUPPLY, s.id, s.room.name, ASSIGNMENT_PRIORITY.high + 20))
+    }
+  }
+
+  // Add energy transfer job
   for (const s of this.controllerContainers) {
-    // Add energy transfer job
     if (s.store.energy < s.storeCapacity) {
-      this.assignments.push(new Assignment(JOB.TRANSFER, s.id, s.room.name, 030))
+      this.assignments.push(new Assignment(JOB.TRANSFER, s.id, s.room.name, ASSIGNMENT_PRIORITY.high + 30))
     }
   }
 
   if (this.storage) {
-    this.assignments.push(new Assignment(JOB.STORAGE, this.storage.id, this.room.name, 090))
+    this.assignments.push(new Assignment(JOB.STORAGE, this.storage.id, this.room.name, ASSIGNMENT_PRIORITY.high + 90))
   }
 
-  const CONSTRUCTION_PRIORITIES = {
-    tower: 210,
-    spawn: 210,
-    container: 220,
-    road: 230,
-    extension: 240,
-    storage: 250
-  }
   // Add building job
   for (const site of this.constructionSites) {
     let ratioWeight = Math.floor((site.progress / site.progressTotal) * 10)
-    let priority = CONSTRUCTION_PRIORITIES[site.structureType] - ratioWeight
+    let priority = ASSIGNMENT_PRIORITY.build[site.structureType] - ratioWeight
     this.assignments.push(new Assignment(JOB.BUILD, site.id, site.room.name, priority))
   }
+};
 
+VillageCentre.prototype.createSpawnOrder = function() {
   let peasantLimits = 0
   for (const source of this.sources) {
-    let enemiesInRange = source.pos.findInRange(FIND_HOSTILE_CREEPS, 5).length
-    let hostileStructures = source.pos.findInRange(FIND_HOSTILE_STRUCTURES, 5).length
-    if (enemiesInRange || hostileStructures) {
-      continue;
-    }
     let freeTiles = source.room.lookForAtArea(LOOK_TERRAIN, source.pos.y-1, source.pos.x-1, source.pos.y+1, source.pos.x+1, true)
     freeTiles = _.sum(freeTiles, (t) => t.terrain !== 'wall')
     peasantLimits += freeTiles
 
     // Check if source has Farmer
-    let hasFarmer = _.sum(Game.creeps, (c) => c.memory.role == FARMER && c.memory.assignment.id == source.id)
+    let hasFarmer = _.sum(this.creeps, (c) => c.memory.role == FARMER && c.memory.assignment.id == source.id)
     if (!hasFarmer && this.room.controller.level >= 2) {
       let order = {
         body: [WORK, WORK, WORK, WORK, WORK, MOVE],
